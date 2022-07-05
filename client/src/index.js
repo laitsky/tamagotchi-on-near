@@ -1,20 +1,26 @@
 import { ColorModeScript } from '@chakra-ui/react';
 import React, { StrictMode } from 'react';
 import * as ReactDOM from 'react-dom/client';
+import { Buffer } from 'buffer';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import * as serviceWorker from './serviceWorker';
+import { initApp } from './utils';
 
 const container = document.getElementById('root');
 const root = ReactDOM.createRoot(container);
 
-root.render(
-  <StrictMode>
-    <ColorModeScript />
-    <App />
-  </StrictMode>
-);
-
+window.nearInitPromise = initApp()
+  .then(() => {
+    global.Buffer = Buffer;
+    root.render(
+      <StrictMode>
+        <ColorModeScript />
+        <App />
+      </StrictMode>
+    );
+  })
+  .catch(console.error);
 // If you want your app to work offline and load faster, you can change
 // unregister() to register() below. Note this comes with some pitfalls.
 // Learn more about service workers: https://cra.link/PWA
