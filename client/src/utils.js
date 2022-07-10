@@ -27,7 +27,8 @@ export async function initApp() {
         'feed',
         'play',
         'cure',
-        'check_if_sick'
+        'check_if_sick',
+        'tamagotchi_mint'
       ]
     }
   );
