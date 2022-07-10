@@ -1,8 +1,12 @@
+mod external;
+
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
-use near_sdk::{near_bindgen, require, env, PanicOnDefault, Gas, Balance, ext_contract, AccountId, Promise, PromiseResult, log, BorshStorageKey};
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::json_types::{Base64VecU8};
+use near_sdk::{
+    env, ext_contract, log, near_bindgen, require, AccountId, Balance, BorshStorageKey, Gas,
+    PanicOnDefault, Promise, PromiseResult,
+};
 
 const DEPOSIT: Balance = 1_000_000_000_000_000_000_000_000; // 1 NEAR
 const BASIC_GAS: Gas = Gas(5_000_000_000_000);
@@ -10,41 +14,29 @@ const MINT_GAS: Gas = Gas(30_000_000_000_000);
 
 #[derive(BorshStorageKey, BorshSerialize)]
 pub enum StorageKeys {
-    UserList,
+    UserDetail,
 }
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct TamagotchiContract {
-    user_list: LookupMap<AccountId, UserList>,
-    weight: u64,
-    hungry_meter: u8, // 0..4
-    happiness_meter: u8, // 0..4
-    is_sick: bool,
-    overfeeding_meter: u8,
+    user_list: LookupMap<AccountId, UserDetail>,
 }
 #[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, Debug)]
 #[serde(crate = "near_sdk::serde")]
-pub struct UserList {
+pub struct UserDetail {
     token_id: String,
-    receiver_id: AccountId
+    receiver_id: AccountId,
+    stats: TamagotchiStats,
 }
-
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, Debug)]
 #[serde(crate = "near_sdk::serde")]
-pub struct TokenMetadata {
-    pub title: Option<String>, // ex. "Arch Nemesis: Mail Carrier" or "Parcel #5055"
-    pub description: Option<String>, // free-form description
-    pub media: Option<String>, // URL to associated media, preferably to decentralized, content-addressed storage
-    pub media_hash: Option<Base64VecU8>, // Base64-encoded sha256 hash of content referenced by the `media` field. Required if `media` is included.
-    pub copies: Option<u64>, // number of copies of this set of metadata in existence when token was minted.
-    pub issued_at: Option<u64>, // When token was issued or minted, Unix epoch in milliseconds
-    pub expires_at: Option<u64>, // When token expires, Unix epoch in milliseconds
-    pub starts_at: Option<u64>, // When token starts being valid, Unix epoch in milliseconds
-    pub updated_at: Option<u64>, // When token was last updated, Unix epoch in milliseconds
-    pub extra: Option<String>, // anything extra the NFT wants to store on-chain. Can be stringified JSON.
-    pub reference: Option<String>, // URL to an off-chain JSON file with more info.
-    pub reference_hash: Option<Base64VecU8>, // Base64-encoded sha256 hash of JSON from reference field. Required if `reference` is included.
+pub struct TamagotchiStats {
+    pub weight: u64,
+    pub hungry_meter: u8,    // 0..4
+    pub happiness_meter: u8, // 0..4
+    pub is_sick: bool,
+    pub overfeeding_meter: u8,
 }
 
 #[ext_contract(nft)]
@@ -52,9 +44,9 @@ trait ExtNft {
     fn nft_mint(
         &mut self,
         token_id: String,
-        metadata: TokenMetadata,
+        metadata: external::TokenMetadata,
         receiver_id: AccountId,
-        perpetual_royalties: Option<std::collections::HashMap<AccountId,u32>>
+        perpetual_royalties: Option<std::collections::HashMap<AccountId, u32>>,
     );
 }
 
@@ -63,171 +55,239 @@ trait ExtSelf {
     fn mint_cb(&self, token_id: String, receiver_id: AccountId);
 }
 
-pub fn did_promise_succeed() -> bool {
-    if env::promise_results_count() != 1 {
-      log!("Expected a result on the callback");
-      return false;
-    }
-  
-    match env::promise_result(0) {
-      PromiseResult::Successful(_) => true,
-      _ => false,
-    }
-  }
-
 #[near_bindgen]
 impl TamagotchiContract {
     // Contract initialization
     #[init]
     pub fn new() -> Self {
         require!(!env::state_exists(), "The contract is already initialized");
-        Self { user_list:LookupMap::new(StorageKeys::UserList) ,weight: 2, hungry_meter: 2, happiness_meter: 2, is_sick: false, overfeeding_meter: 0 }
+        Self {
+            user_list: LookupMap::new(StorageKeys::UserDetail),
+        }
     }
 
     pub fn tamagotchi_mint(
         &mut self,
         token_id: String,
-        metadata: TokenMetadata,
+        metadata: external::TokenMetadata,
         receiver_id: AccountId,
-        perpetual_royalties: Option<std::collections::HashMap<AccountId,u32>>
+        perpetual_royalties: Option<std::collections::HashMap<AccountId, u32>>,
     ) -> Promise {
+        require!(
+            self.check_user_exists(env::signer_account_id()) == false,
+            "User already exist!"
+        );
         let nft_account: AccountId = AccountId::new_unchecked("nft.tamagotchi.testnet".to_string());
 
         let promise = nft::ext(nft_account)
             .with_static_gas(MINT_GAS)
             .with_attached_deposit(DEPOSIT)
-            .nft_mint(token_id.clone(), metadata, receiver_id.clone(), perpetual_royalties);
+            .nft_mint(
+                token_id.clone(),
+                metadata,
+                receiver_id.clone(),
+                perpetual_royalties,
+            );
 
         return promise.then(
             this_contract::ext(env::current_account_id())
-            .with_static_gas(BASIC_GAS)
-            .mint_cb(token_id, receiver_id)
-        )
+                .with_static_gas(BASIC_GAS)
+                .mint_cb(token_id, receiver_id),
+        );
     }
 
     #[private]
     pub fn mint_cb(&mut self, token_id: String, receiver_id: AccountId) {
         // check if XCC succeeded
-        if !did_promise_succeed() {
+        if !external::did_promise_succeed() {
             log!("There was an error contacting NFT Tamagotchi Contract");
         }
 
         match env::promise_result(0) {
             PromiseResult::Successful(_) => {
-                self.user_list.insert(&env::signer_account_id(), &UserList { token_id, receiver_id });
-            },
-            _ => { log!("There was an error contacting NFT Tamagotchi Contract");}
+                self.user_list.insert(
+                    &env::signer_account_id(),
+                    &UserDetail {
+                        token_id,
+                        receiver_id,
+                        stats: TamagotchiStats {
+                            weight: 2,
+                            hungry_meter: 2,
+                            happiness_meter: 2,
+                            is_sick: false,
+                            overfeeding_meter: 0,
+                        },
+                    },
+                );
+            }
+            _ => {
+                log!("There was an error contacting NFT Tamagotchi Contract");
+            }
         }
     }
 
     pub fn feed(&mut self, food_type: String) {
-        require!(food_type == "MEAL" || food_type == "SNACK", "Food type incompatible");
+        require!(
+            self.check_user_exists(env::signer_account_id()),
+            "User does not exist!"
+        );
+        require!(
+            food_type == "MEAL" || food_type == "SNACK",
+            "Food type incompatible"
+        );
+        let stats = self.get_user_tamagotchi(env::signer_account_id());
 
         self.check_if_sick();
-        require!(self.is_sick == false, "Tamagotchi is sick. Give medicine!");
-        
+        require!(stats.is_sick == false, "Tamagotchi is sick. Give medicine!");
+
+        let mut new_weight = stats.weight;
+        let mut new_hungry_meter = stats.hungry_meter;
+        let mut new_overfeeding_meter = stats.overfeeding_meter;
+
         if food_type == "MEAL" {
-            self.weight = self.weight + 1;
-            if self.hungry_meter < 4 {
-                self.hungry_meter = 4;
-            } else if self.hungry_meter == 4 {
-                self.overfeeding_meter = self.overfeeding_meter + 3;
+            new_weight = new_weight + 1;
+            match new_hungry_meter {
+                u8::MIN..=3 => new_hungry_meter = 4,
+                4 => new_overfeeding_meter = new_overfeeding_meter + 3,
+                _ => (),
             }
         } else if food_type == "SNACK" {
-            self.weight = self.weight + 2;
-            if self.hungry_meter < 4 {
-                self.hungry_meter = self.hungry_meter + 1;
-            } else if self.hungry_meter == 4 {
-                self.overfeeding_meter = self.overfeeding_meter + 1;
+            new_weight = new_weight + 2;
+            match new_hungry_meter {
+                u8::MIN..=3 => new_hungry_meter = new_hungry_meter + 1,
+                4 => new_overfeeding_meter = new_overfeeding_meter + 1,
+                _ => (),
             }
         }
+
+        let prev = self.user_list.remove(&env::signer_account_id()).unwrap();
+        self.user_list.insert(
+            &env::signer_account_id(),
+            &UserDetail {
+                token_id: prev.token_id,
+                receiver_id: prev.receiver_id,
+                stats: TamagotchiStats {
+                    weight: new_weight,
+                    hungry_meter: new_hungry_meter,
+                    happiness_meter: stats.happiness_meter,
+                    is_sick: stats.is_sick,
+                    overfeeding_meter: new_overfeeding_meter,
+                },
+            },
+        );
     }
-    
+
     pub fn play(&mut self, guess: String) {
-        require!(guess == "LEFT" || guess == "RIGHT", "You can only move left or right!");
+        require!(
+            self.check_user_exists(env::signer_account_id()),
+            "User does not exist!"
+        );
+        require!(
+            guess == "LEFT" || guess == "RIGHT",
+            "You can only move left or right!"
+        );
+        let stats = self.get_user_tamagotchi(env::signer_account_id());
 
         self.check_if_sick();
-        require!(self.is_sick == false, "Tamagotchi is sick. Give medicine!");
+        require!(stats.is_sick == false, "Tamagotchi is sick. Give medicine!");
 
         // Playing the game will reduce weight by 1,
-        // hungry meter by 1, and reset sick meter
-        self.weight = self.weight - 1;
-        self.hungry_meter = self.hungry_meter - 1;
-        self.overfeeding_meter = 0;
+        // hungry meter by 1, and reset overfeeding meter
+        let new_weight = stats.weight - 1;
+        let new_hungry_meter = stats.hungry_meter - 1;
+        let mut new_happiness_meter = stats.happiness_meter;
+        let new_overfeeding_meter = 0;
 
         // Guess the direction
         // Generate pseudorandom number
         // 0 means "LEFT", 1 means "RIGHT"
         let rand: u8 = (*env::random_seed().get(0).unwrap()) % 2;
-        
-        if guess == "LEFT" && rand == 0 {
-            match self.happiness_meter {
-                0..=3 => self.happiness_meter = self.happiness_meter + 1,
-                4 => self.happiness_meter = 4,
-                4..=u8::MAX => ()
+        if (guess == "LEFT" && rand == 0) || (guess == "RIGHT" && rand == 1) {
+            match new_happiness_meter {
+                0..=3 => new_happiness_meter = new_happiness_meter + 1,
+                4 => (),
+                _ => (),
             }
-        } else if guess == "RIGHT" && rand == 1 {
-            match self.happiness_meter {
-                0..=3 => self.happiness_meter = self.happiness_meter + 1,
-                4 => self.happiness_meter = 4,
-                4..=u8::MAX => ()
-            }
-        } 
+        }
+
+        let prev = self.user_list.remove(&env::signer_account_id()).unwrap();
+        self.user_list.insert(
+            &env::signer_account_id(),
+            &UserDetail {
+                token_id: prev.token_id,
+                receiver_id: prev.receiver_id,
+                stats: TamagotchiStats {
+                    weight: new_weight,
+                    hungry_meter: new_hungry_meter,
+                    happiness_meter: new_happiness_meter,
+                    is_sick: stats.is_sick,
+                    overfeeding_meter: new_overfeeding_meter,
+                },
+            },
+        );
     }
 
     pub fn cure(&mut self) {
-        self.is_sick = false;
-        self.weight = 1;
-        self.happiness_meter = 1;
-        self.hungry_meter = 1;
-        self.overfeeding_meter = 0;
+        require!(
+            self.check_user_exists(env::signer_account_id()),
+            "User does not exist!"
+        );
+        let prev = self.user_list.remove(&env::signer_account_id()).unwrap();
+
+        self.user_list.insert(
+            &env::signer_account_id(),
+            &UserDetail {
+                token_id: prev.token_id,
+                receiver_id: prev.receiver_id,
+                stats: TamagotchiStats {
+                    weight: 1,
+                    hungry_meter: 1,
+                    happiness_meter: 1,
+                    is_sick: false,
+                    overfeeding_meter: 0,
+                },
+            },
+        );
     }
 
-    pub fn get_user(&self, address: AccountId) -> bool {
-        match self.user_list.get(&address) {
-            Some(_) => true,
-            None => false
-        }
+    pub fn check_user_exists(&self, address: AccountId) -> bool {
+        self.user_list.contains_key(&address)
     }
 
-    // pub fn get_state(&self) -> TamagotchiContract {
-    //     TamagotchiContract {
-    //         weight: self.weight,
-    //         hungry_meter: self.hungry_meter, // 0..4
-    //         happiness_meter: self.happiness_meter, // 0..4
-    //         is_sick: self.is_sick,
-    //         overfeeding_meter: self.overfeeding_meter,
-    //     }
-    // }
+    pub fn get_user_tamagotchi(&self, address: AccountId) -> TamagotchiStats {
+        require!(self.check_user_exists(address.clone()), "User does not exist!");
+        self.user_list.get(&address).unwrap().stats
+    }
 
     pub fn check_if_sick(&mut self) {
         // Character will get sick if:
         // Overfeeding meter reaches more than 5;
-        // Weight or hungry or happiness meter reaches 0 
-        if self.overfeeding_meter >= 5 ||
-            self.weight == 0 || 
-            self.hungry_meter == 0 ||
-            self.happiness_meter == 0
+        // Weight or hungry or happiness meter reaches 0
+        require!(
+            self.check_user_exists(env::signer_account_id()),
+            "User does not exist!"
+        );
+        let stats = self.get_user_tamagotchi(env::signer_account_id());
+        if stats.overfeeding_meter >= 5
+            || stats.weight == 0
+            || stats.hungry_meter == 0
+            || stats.happiness_meter == 0
         {
-            self.is_sick = true;
-            self.happiness_meter = TamagotchiContract::safe_sub_u8(self.happiness_meter, 3);
-        } 
-    }
-
-    // Safe substract [max(a-b, 0)]
-    fn safe_sub_u8(a: u8, b: u8) -> u8 {
-        let result: u8 = match a.checked_sub(b) {
-            Some(val) => val,
-            None => u8::MIN // minimum val of u8
-        };
-        result
+            let prev = self.user_list.remove(&env::signer_account_id()).unwrap();
+            self.user_list.insert(
+                &env::signer_account_id(),
+                &UserDetail {
+                    token_id: prev.token_id,
+                    receiver_id: prev.receiver_id,
+                    stats: TamagotchiStats {
+                        weight: prev.stats.weight,
+                        hungry_meter: prev.stats.hungry_meter,
+                        happiness_meter: external::safe_sub_u8(prev.stats.happiness_meter, 3),
+                        is_sick: true,
+                        overfeeding_meter: prev.stats.overfeeding_meter,
+                    },
+                },
+            );
+        }
     }
 }
-
-/*
- * the rest of this file sets up unit tests
- * to run these, the command will be:
- * cargo test --package rust-template -- --nocapture
- * Note: 'rust-template' comes from Cargo.toml's 'name' key
- */
-

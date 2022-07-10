@@ -20,8 +20,8 @@ export async function initApp() {
     nearConfig.contractName,
     {
       viewMethods: [
-        'get_state',
-
+        'check_user_exists',
+        'get_user_tamagotchi'
       ],
       changeMethods: [
         'feed',
