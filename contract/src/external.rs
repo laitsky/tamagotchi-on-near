@@ -20,7 +20,7 @@ pub struct TokenMetadata {
     pub reference_hash: Option<Base64VecU8>, // Base64-encoded sha256 hash of JSON from reference field. Required if `reference` is included.
 }
 
-pub fn did_promise_succeed() -> bool {
+pub(crate) fn did_promise_succeed() -> bool {
     if env::promise_results_count() != 1 {
         log!("Expected a result on the callback");
         return false;
@@ -33,7 +33,7 @@ pub fn did_promise_succeed() -> bool {
 }
 
 // Safe substract [max(a-b, 0)]
-pub fn safe_sub_u8(a: u8, b: u8) -> u8 {
+pub(crate) fn safe_sub_u8(a: u8, b: u8) -> u8 {
     let result: u8 = match a.checked_sub(b) {
         Some(val) => val,
         None => u8::MIN, // minimum val of u8

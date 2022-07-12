@@ -32,7 +32,7 @@ pub struct UserDetail {
 #[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, Debug)]
 #[serde(crate = "near_sdk::serde")]
 pub struct TamagotchiStats {
-    pub weight: u64,
+    pub weight: u8,
     pub hungry_meter: u8,    // 0..4
     pub happiness_meter: u8, // 0..4
     pub is_sick: bool,
@@ -135,11 +135,9 @@ impl TamagotchiContract {
             food_type == "MEAL" || food_type == "SNACK",
             "Food type incompatible"
         );
+        require!(!self.is_tamagotchi_sick(env::signer_account_id()), "Tamagotchi is sick. Give medicine!");
+
         let stats = self.get_user_tamagotchi(env::signer_account_id());
-
-        self.check_if_sick();
-        require!(stats.is_sick == false, "Tamagotchi is sick. Give medicine!");
-
         let mut new_weight = stats.weight;
         let mut new_hungry_meter = stats.hungry_meter;
         let mut new_overfeeding_meter = stats.overfeeding_meter;
@@ -161,6 +159,12 @@ impl TamagotchiContract {
         }
 
         let prev = self.user_list.remove(&env::signer_account_id()).unwrap();
+        let should_tamagotchi_sick: bool = match new_overfeeding_meter {
+            u8::MIN..=4 => false,
+            5..=u8::MAX => true,
+        };
+        // Character will get sick if:
+        // Overfeeding meter reaches more than 5
         self.user_list.insert(
             &env::signer_account_id(),
             &UserDetail {
@@ -169,10 +173,13 @@ impl TamagotchiContract {
                 stats: TamagotchiStats {
                     weight: new_weight,
                     hungry_meter: new_hungry_meter,
-                    happiness_meter: stats.happiness_meter,
-                    is_sick: stats.is_sick,
+                    happiness_meter: match should_tamagotchi_sick {
+                        true => external::safe_sub_u8(stats.happiness_meter , 3),
+                        false => stats.happiness_meter
+                    },
+                    is_sick: should_tamagotchi_sick,
                     overfeeding_meter: new_overfeeding_meter,
-                },
+                }
             },
         );
     }
@@ -186,15 +193,15 @@ impl TamagotchiContract {
             guess == "LEFT" || guess == "RIGHT",
             "You can only move left or right!"
         );
-        let stats = self.get_user_tamagotchi(env::signer_account_id());
+        require!(!self.is_tamagotchi_sick(env::signer_account_id()), "Tamagotchi is sick. Give medicine!");
 
-        self.check_if_sick();
-        require!(stats.is_sick == false, "Tamagotchi is sick. Give medicine!");
+        let stats = self.get_user_tamagotchi(env::signer_account_id());
+        require!(stats.weight > 0 || stats.hungry_meter > 0, "Tamagotchi is hungry, give some food!");
 
         // Playing the game will reduce weight by 1,
         // hungry meter by 1, and reset overfeeding meter
-        let new_weight = stats.weight - 1;
-        let new_hungry_meter = stats.hungry_meter - 1;
+        let new_weight = external::safe_sub_u8(stats.weight, 1);
+        let new_hungry_meter = external::safe_sub_u8(stats.hungry_meter, 1);
         let mut new_happiness_meter = stats.happiness_meter;
         let new_overfeeding_meter = 0;
 
@@ -211,6 +218,8 @@ impl TamagotchiContract {
         }
 
         let prev = self.user_list.remove(&env::signer_account_id()).unwrap();
+        // Character will get sick if:
+        // Weight or hungry or happiness meter reaches 0
         self.user_list.insert(
             &env::signer_account_id(),
             &UserDetail {
@@ -220,7 +229,7 @@ impl TamagotchiContract {
                     weight: new_weight,
                     hungry_meter: new_hungry_meter,
                     happiness_meter: new_happiness_meter,
-                    is_sick: stats.is_sick,
+                    is_sick: prev.stats.is_sick,
                     overfeeding_meter: new_overfeeding_meter,
                 },
             },
@@ -255,39 +264,21 @@ impl TamagotchiContract {
     }
 
     pub fn get_user_tamagotchi(&self, address: AccountId) -> TamagotchiStats {
-        require!(self.check_user_exists(address.clone()), "User does not exist!");
+        require!(
+            self.check_user_exists(address.clone()),
+            "User does not exist!"
+        );
         self.user_list.get(&address).unwrap().stats
     }
 
-    pub fn check_if_sick(&mut self) {
-        // Character will get sick if:
-        // Overfeeding meter reaches more than 5;
-        // Weight or hungry or happiness meter reaches 0
+    pub fn is_tamagotchi_sick(&self, address: AccountId) -> bool {
         require!(
-            self.check_user_exists(env::signer_account_id()),
+            self.check_user_exists(address.clone()),
             "User does not exist!"
         );
-        let stats = self.get_user_tamagotchi(env::signer_account_id());
-        if stats.overfeeding_meter >= 5
-            || stats.weight == 0
-            || stats.hungry_meter == 0
-            || stats.happiness_meter == 0
-        {
-            let prev = self.user_list.remove(&env::signer_account_id()).unwrap();
-            self.user_list.insert(
-                &env::signer_account_id(),
-                &UserDetail {
-                    token_id: prev.token_id,
-                    receiver_id: prev.receiver_id,
-                    stats: TamagotchiStats {
-                        weight: prev.stats.weight,
-                        hungry_meter: prev.stats.hungry_meter,
-                        happiness_meter: external::safe_sub_u8(prev.stats.happiness_meter, 3),
-                        is_sick: true,
-                        overfeeding_meter: prev.stats.overfeeding_meter,
-                    },
-                },
-            );
+        match self.get_user_tamagotchi(address).is_sick {
+            true => true,
+            false => false,
         }
     }
 }

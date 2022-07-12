@@ -1,10 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Box,
-  Button,
-  Heading,
   Divider,
-  Image,
 } from '@chakra-ui/react';
 import Navbar from './Navbar';
 
@@ -20,7 +17,6 @@ export default function Game() {
 
   const fetchData = async () => {
     const res = await window.contract.check_user_exists({ address: window.accountID });
-    console.log(res);
     setHasUserMinted(res);
   }
 
@@ -28,7 +24,7 @@ export default function Game() {
     <Box>
       <Navbar />
       <Divider mt={3} mb={6} />
-      {hasUserMinted ? <Play /> : <MintNFT />}
+      {hasUserMinted ? <Play /> : <MintNFT /> }
     </Box>
   )
 }

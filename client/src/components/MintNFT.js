@@ -1,4 +1,4 @@
-import { Box, Button, Heading } from "@chakra-ui/react";
+import { Box, Button, Center, Heading, VStack } from "@chakra-ui/react";
 
 export default function MintNFT() {
   const mintNFT = async () => {
@@ -17,10 +17,14 @@ export default function MintNFT() {
   }
 
   return (
-    <Box display="flex" flexDirection="column">
-      <Heading>You have no NFT</Heading>
-      <Heading size="md">Mint below to play the game</Heading>
-      <Button onClick={mintNFT}>Mint NFT</Button>
+    <Box display="flex" flexDirection="column" minH="40vh" justifyContent="center">
+      <Center display="flex" flexDirection="column">
+        <VStack spacing="1.8em">
+          <Heading>You have no NFT</Heading>
+          <Heading size="md">Mint below to play the game</Heading>
+          <Button onClick={mintNFT} size="lg">Mint NFT</Button>
+        </VStack>
+      </Center>
     </Box>
   )
 }
