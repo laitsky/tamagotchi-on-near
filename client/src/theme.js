@@ -8,6 +8,7 @@ const theme = extendTheme({
   styles: {
     global: {
       body: {
+        height: '100vh',
         bg: 'gray.700',
         color: 'white',
       },

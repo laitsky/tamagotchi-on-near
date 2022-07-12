@@ -217,6 +217,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "contract"
+version = "0.1.0"
+dependencies = [
+ "near-sdk",
+ "serde_json",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1040,14 +1048,6 @@ dependencies = [
  "quote",
  "syn",
  "unicode-xid",
-]
-
-[[package]]
-name = "tamagotchi-contract"
-version = "0.1.0"
-dependencies = [
- "near-sdk",
- "serde_json",
 ]
 
 [[package]]
