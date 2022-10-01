@@ -1,5 +1,7 @@
 # Tamagotchi on NEAR
 
+**[Deployed app](tamagotchi-on-near.vercel.app) **
+
 Simple Tamagotchi clone made fully on-chain with NEAR and Rust.
 
 This repository serves 3 main folders:
