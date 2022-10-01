@@ -1,6 +1,6 @@
 # Tamagotchi on NEAR
 
-**[Deployed app](tamagotchi-on-near.vercel.app) **
+[Deployed app (testnet)](tamagotchi-on-near.vercel.app)
 
 Simple Tamagotchi clone made fully on-chain with NEAR and Rust.
 
@@ -35,3 +35,17 @@ If tamagotchi is sick, giving medicine will cure it. A sick tamagotchi cannot be
 The tamagotchi will be sick if giving tamagotchi too manys nacks after the hungry meter is 4.
 
 If tamagotchi get sick, decrease the happiness meter by 3.
+
+# Screenshots
+
+Welcome page:
+
+[![Screen-Shot-2022-10-01-at-21-09-54.png](https://i.postimg.cc/pr8bX9YR/Screen-Shot-2022-10-01-at-21-09-54.png)](https://postimg.cc/cts5FLbb)
+
+Mint page (if user has yet to mint the NFT tamagotchi character):
+
+[![Screen-Shot-2022-10-01-at-21-10-54.png](https://i.postimg.cc/qMdWxvx6/Screen-Shot-2022-10-01-at-21-10-54.png)](https://postimg.cc/JtPT1mgR)
+
+Play page:
+
+[![Screen-Shot-2022-10-01-at-21-09-43.png](https://i.postimg.cc/2jnKyfNk/Screen-Shot-2022-10-01-at-21-09-43.png)](https://postimg.cc/0r2fXFNF)
